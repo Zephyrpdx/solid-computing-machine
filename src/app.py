@@ -78,6 +78,17 @@ activities = {
 }
 
 
+VALID_EMAIL_DOMAIN = "@mergington.edu"
+
+
+def _validate_email_domain(email: str):
+    """Ensure the email belongs to the allowed school domain."""
+    if not email or "@" not in email:
+        return False
+    email = email.strip().lower()
+    return email.endswith(VALID_EMAIL_DOMAIN)
+
+
 @app.get("/")
 def root():
     return RedirectResponse(url="/static/index.html")
@@ -98,7 +109,14 @@ def signup_for_activity(activity_name: str, email: str):
     # Get the specific activity
     activity = activities[activity_name]
 
-# Validate student is not already signed up
+    # Validate email domain
+    if not _validate_email_domain(email):
+        raise HTTPException(status_code=400, detail="Invalid email domain")
+
+    # Normalize email
+    email = email.strip().lower()
+
+    # Validate student is not already signed up
     if email in activity["participants"]:
         raise HTTPException(status_code=400, detail="Student already signed up")
 
@@ -116,10 +134,18 @@ def unregister_from_activity(activity_name: str, email: str):
 
     activity = activities[activity_name]
 
-    # Validate student is signed up
-    if email not in activity["participants"]:
-        raise HTTPException(status_code=404, detail="Participant not found for this activity")
+    # Normalize email
+    email = email.strip().lower()
 
-    # Remove student
-    activity["participants"].remove(email)
-    return {"message": f"Removed {email} from {activity_name}"}
+    # If the email is already registered, allow removal even if the domain
+    # is not the expected one (this handles legacy or malformed entries).
+    if email in activity["participants"]:
+        activity["participants"].remove(email)
+        return {"message": f"Removed {email} from {activity_name}"}
+
+    # If the email is not registered, validate domain of the provided email
+    # and return a clear error when it's invalid or simply not found.
+    if not _validate_email_domain(email):
+        raise HTTPException(status_code=400, detail="Invalid email domain")
+
+    raise HTTPException(status_code=404, detail="Participant not found for this activity")
