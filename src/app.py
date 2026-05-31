@@ -8,16 +8,14 @@ for extracurricular activities at Mergington High School.
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
-import os
 from pathlib import Path
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
 
 # Mount the static files directory
-current_dir = Path(__file__).parent
-app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
-          "static")), name="static")
+static_dir = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # In-memory activity database
 activities = {
@@ -81,12 +79,13 @@ activities = {
 VALID_EMAIL_DOMAIN = "@mergington.edu"
 
 
-def _validate_email_domain(email: str):
-    """Ensure the email belongs to the allowed school domain."""
+def _validate_email_domain(email: str) -> tuple[bool, str]:
+    """Validate and normalize email. Returns (is_valid, normalized_email)."""
     if not email or "@" not in email:
-        return False
-    email = email.strip().lower()
-    return email.endswith(VALID_EMAIL_DOMAIN)
+        return False, ""
+    normalized = email.strip().lower()
+    is_valid = normalized.endswith(VALID_EMAIL_DOMAIN)
+    return is_valid, normalized
 
 
 @app.get("/")
@@ -106,23 +105,24 @@ def signup_for_activity(activity_name: str, email: str):
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
 
-    # Get the specific activity
     activity = activities[activity_name]
 
-    # Validate email domain
-    if not _validate_email_domain(email):
+    # Validate and normalize email
+    is_valid, normalized_email = _validate_email_domain(email)
+    if not is_valid:
         raise HTTPException(status_code=400, detail="Invalid email domain")
 
-    # Normalize email
-    email = email.strip().lower()
-
     # Validate student is not already signed up
-    if email in activity["participants"]:
+    if normalized_email in activity["participants"]:
         raise HTTPException(status_code=400, detail="Student already signed up")
 
+    # Check capacity
+    if len(activity["participants"]) >= activity["max_participants"]:
+        raise HTTPException(status_code=400, detail="Activity is at maximum capacity")
+
     # Add student
-    activity["participants"].append(email)
-    return {"message": f"Signed up {email} for {activity_name}"}
+    activity["participants"].append(normalized_email)
+    return {"message": f"Signed up {normalized_email} for {activity_name}"}
 
 
 @app.delete("/activities/{activity_name}/signup")
@@ -135,17 +135,17 @@ def unregister_from_activity(activity_name: str, email: str):
     activity = activities[activity_name]
 
     # Normalize email
-    email = email.strip().lower()
+    _, normalized_email = _validate_email_domain(email)
 
     # If the email is already registered, allow removal even if the domain
     # is not the expected one (this handles legacy or malformed entries).
-    if email in activity["participants"]:
-        activity["participants"].remove(email)
-        return {"message": f"Removed {email} from {activity_name}"}
+    if normalized_email in activity["participants"]:
+        activity["participants"].remove(normalized_email)
+        return {"message": f"Removed {normalized_email} from {activity_name}"}
 
-    # If the email is not registered, validate domain of the provided email
-    # and return a clear error when it's invalid or simply not found.
-    if not _validate_email_domain(email):
+    # If the email is not registered, validate domain
+    is_valid, _ = _validate_email_domain(email)
+    if not is_valid:
         raise HTTPException(status_code=400, detail="Invalid email domain")
 
     raise HTTPException(status_code=404, detail="Participant not found for this activity")
