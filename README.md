@@ -13,4 +13,16 @@ Remember, it's self-paced so feel free to take a break! ☕️
 ---
 
 &copy; 2025 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
+## Port cleanup helper
 
+If the app fails to launch because port `8000` is already in use, run:
+
+```bash
+./cleanup-port.sh
+```
+
+Or specify a different port:
+
+```bash
+./cleanup-port.sh 8080
+```
